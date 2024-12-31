@@ -13,6 +13,8 @@ This section contains commands and tips for troubleshooting nodes with the `etcd
 
 The container for etcd should have status **Up**. The duration shown after **Up** is the time the container has been running.
 
+RKE1
+
 ```
 docker ps -a -f=name=etcd$
 ```
@@ -23,13 +25,48 @@ CONTAINER ID   IMAGE                                 COMMAND                  CR
 d26adbd23643   rancher/mirrored-coreos-etcd:v3.5.7   "/usr/local/bin/etcd…"   30 minutes ago   Up 30 minutes             etcd
 ```
 
+RKE2/K3s
+```
+crictl ps --label io.kubernetes.container.name=etcd
+```
+
+Example output:
+```
+CONTAINER           IMAGE               CREATED             STATE               NAME                ATTEMPT             POD ID              POD
+00ddda02d5c4b       19f8e656ed901       3 weeks ago         Running             etcd                0                   bd09cb26f253a       etcd-rke2-all-hppxl-lpnwm
+```
+
 ## etcd Container Logging
 
 The logging of the container can contain information on what the problem could be.
 
+RKE1
+
 ```
 docker logs etcd
 ```
+
+RKE2/K3s: Crictl requires the container-id to list the logs.
+
+```
+etcdcontainer=$(/var/lib/rancher/rke2/bin/crictl ps --label io.kubernetes.container.name=etcd --quiet)
+crictl logs $etcdcontainer
+```
+
+Example output:
+```
+crictl logs --tail 20 -f $etcdcontainer
+{"level":"debug","ts":"2024-12-31T12:04:19.17864Z","caller":"etcdserver/server.go:2192","msg":"Applying entries","num-entries":1}
+{"level":"debug","ts":"2024-12-31T12:04:19.17869Z","caller":"etcdserver/server.go:2195","msg":"Applying entry","index":18050864,"term":7,"type":"EntryNormal"}
+{"level":"debug","ts":"2024-12-31T12:04:19.178703Z","caller":"etcdserver/server.go:2255","msg":"apply entry normal","consistent-index":18050863,"entry-index":18050864,"should-applyV3":true}
+{"level":"debug","ts":"2024-12-31T12:04:19.178727Z","caller":"etcdserver/server.go:2282","msg":"applyEntryNormal","raftReq":"header:<ID:11823237772231225757 username:\"etcd-client\" auth_revision:1 > txn:<compare:<target:MOD key:\"/registry/leases/kube-system/kube-scheduler\" mod_revision:16689509 > success:<request_put:<key:\"/registry/leases/kube-system/kube-scheduler\" value:\"k8s\\000\\n\\037\\n\\026coordination.k8s.io/v1\\022\\005Lease\\022\\203\\003\\n\\235\\002\\n\\016kube-scheduler\\022\\000\\032\\013kube-system\\\"\\000*$9d102d5a-a0f3-4830-bf21-0292451296ec2\\0008\\000B\\010\\010\\314\\243\\242\\272\\006\\020\\000\\212\\001\\304\\001\\n\\016kube-scheduler\\022\\006Update\\032\\026coordination.k8s.io/v1\\\"\\010\\010\\303\\273\\317\\273\\006\\020\\0002\\010FieldsV1:|\\nz{\\\"f:spec\\\":{\\\"f:acquireTime\\\":{},\\\"f:holderIdentity\\\":{},\\\"f:leaseDurationSeconds\\\":{},\\\"f:leaseTransitions\\\":{},\\\"f:renewTime\\\":{}}}B\\000\\022a\\n@rke2-import-all-hppxl-skjmm_b9a8e609-f9f7-4c2b-b626-66f273dd01d3\\020\\017\\032\\014\\010\\244\\211\\245\\273\\006\\020\\370\\226\\205\\246\\003\\\"\\013\\010\\303\\273\\317\\273\\006\\020\\370\\356\\325P(\\005\\032\\000\\\"\\000\" > > failure:<request_range:<key:\"/registry/leases/kube-system/kube-scheduler\" > > > "}
+{"level":"debug","ts":"2024-12-31T12:04:19.182347Z","caller":"auth/store.go:1151","msg":"found command name","common-name":"etcd-client","user-name":"etcd-client","revision":1}
+{"level":"debug","ts":"2024-12-31T12:04:19.182524Z","caller":"v3rpc/interceptor.go:182","msg":"request stats","start time":"2024-12-31T12:04:19.181384Z","time spent":"1.063804ms","remote":"127.0.0.1:40732","response type":"/etcdserverpb.KV/Range","request count":0,"request size":66,"response count":3,"response size":32,"request content":"key:\"/registry/longhorn.io/engines/\" range_end:\"/registry/longhorn.io/engines0\" count_only:true "}
+{"level":"debug","ts":"2024-12-31T12:04:19.314794Z","caller":"auth/store.go:1151","msg":"found command name","common-name":"etcd-client","user-name":"etcd-client","revision":1}
+{"level":"debug","ts":"2024-12-31T12:04:19.315067Z","caller":"v3rpc/interceptor.go:182","msg":"request stats","start time":"2024-12-31T12:04:19.313569Z","time spent":"1.317581ms","remote":"127.0.0.1:40926","response type":"/etcdserverpb.KV/Range","request count":0,"request size":71,"response count":1,"response size":1199,"request content":"key:\"/registry/configmaps/kube-system/rke2-coredns-rke2-coredns-autoscaler\" "}
+...
+```
+
 | Log | Explanation |
 |-----|------------------|
 | `health check for peer xxx could not connect: dial tcp IP:2380: getsockopt: connection refused` | A connection to the address shown on port 2380 cannot be established. Check if the etcd container is running on the host with the address shown. |
@@ -47,9 +84,20 @@ The address where etcd is listening depends on the address configuration of the 
 Output should contain all the nodes with the `etcd` role and the output should be identical on all nodes.
 
 Command:
+
+RKE1
+
 ```
 docker exec etcd etcdctl member list
 ```
+
+RKE2/k3s
+
+```
+
+```
+
+
 
 ### Check Endpoint Status
 
