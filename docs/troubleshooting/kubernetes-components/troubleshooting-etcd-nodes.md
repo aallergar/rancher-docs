@@ -15,6 +15,7 @@ The container for etcd should have status **Up**. The duration shown after **Up*
 
 RKE1
 
+List etcd container
 ```
 docker ps -a -f=name=etcd$
 ```
@@ -25,7 +26,20 @@ CONTAINER ID   IMAGE                                 COMMAND                  CR
 d26adbd23643   rancher/mirrored-coreos-etcd:v3.5.7   "/usr/local/bin/etcd…"   30 minutes ago   Up 30 minutes             etcd
 ```
 
-RKE2/K3s
+RKE2: With the RKE2 distribution, there is some pre-work requirement.
+
+Pre-work:
+```
+export CRI_CONFIG_FILE=/var/lib/rancher/rke2/agent/etc/crictl.yaml
+PATH="$PATH:/var/lib/rancher/rke2/bin"
+etcdcontainer=$(/var/lib/rancher/rke2/bin/crictl ps --label io.kubernetes.container.name=etcd --quiet)
+ETCD_CERT=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
+ETCD_KEY=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
+ETCD_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
+ETCDCTL_ENDPOINTS=$(crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} member list | cut -d, -f5 | sed -e 's/ //g' | paste -sd ','
+```
+
+List etcd container:
 ```
 crictl ps --label io.kubernetes.container.name=etcd
 ```
@@ -33,7 +47,7 @@ crictl ps --label io.kubernetes.container.name=etcd
 Example output:
 ```
 CONTAINER           IMAGE               CREATED             STATE               NAME                ATTEMPT             POD ID              POD
-00ddda02d5c4b       19f8e656ed901       3 weeks ago         Running             etcd                0                   bd09cb26f253a       etcd-rke2-all-hppxl-lpnwm
+bdc6af19cb586       05ee3fcb86374       4 hours ago         Running             etcd                0                   530d55667bc2c       etcd-rke2-etcd-pool1-hwd8m-cwkl7
 ```
 
 ## etcd Container Logging
@@ -46,10 +60,9 @@ RKE1
 docker logs etcd
 ```
 
-RKE2/K3s: Crictl requires the container-id to list the logs.
+RKE2: Crictl requires the container-id to list the logs.
 
 ```
-etcdcontainer=$(/var/lib/rancher/rke2/bin/crictl ps --label io.kubernetes.container.name=etcd --quiet)
 crictl logs $etcdcontainer
 ```
 
@@ -88,22 +101,35 @@ Command:
 RKE1
 
 ```
-docker exec etcd etcdctl member list
+docker exec etcd etcdctl --write-out table member list
 ```
 
-RKE2/k3s
+RKE2
 
 ```
-
+crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} --endpoints=$ETCDCTL_ENDPOINTS --write-out table member list
 ```
 
-
+Example output:
+```
+crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} --endpoints=$ETCDCTL_ENDPOINTS --write-out table member list
++------------------+---------+--------------------------------------+-----------------------------+-----------------------------+------------+
+|        ID        | STATUS  |                 NAME                 |         PEER ADDRS          |        CLIENT ADDRS         | IS LEARNER |
++------------------+---------+--------------------------------------+-----------------------------+-----------------------------+------------+
+| 7fed495218a50d9f | started | rke2-etcd-pool1-hwd8m-cwkl7-b797f2cd |   https://164.92.78.95:2380 |   https://164.92.78.95:2379 |      false |
+| 8642dda860841612 | started | rke2-etcd-pool1-hwd8m-q5p29-6507a35f | https://146.190.130.42:2380 | https://146.190.130.42:2379 |      false |
+| b214e54d840de345 | started | rke2-etcd-pool1-hwd8m-td5sn-572aca62 |   https://164.92.76.45:2380 |   https://164.92.76.45:2379 |      false |
++------------------+---------+--------------------------------------+-----------------------------+-----------------------------+------------+
+```
 
 ### Check Endpoint Status
 
 The values for `RAFT TERM` should be equal and `RAFT INDEX` should be not be too far apart from each other.
 
 Command:
+
+RKE1
+
 ```
 docker exec -e ETCDCTL_ENDPOINTS=$(docker exec etcd etcdctl member list | cut -d, -f5 | sed -e 's/ //g' | paste -sd ',') etcd etcdctl endpoint status --write-out table
 ```
@@ -119,9 +145,29 @@ Example output:
 +-----------------+------------------+---------+---------+-----------+-----------+------------+
 ```
 
+RKE2
+
+```
+crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} --endpoints=$ETCDCTL_ENDPOINTS endpoint status --write-out=table
+```
+
+Example output:
+```
++-----------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+|          ENDPOINT           |        ID        | VERSION | DB SIZE | IS LEADER | IS LEARNER | RAFT TERM | RAFT INDEX | RAFT APPLIED INDEX | ERRORS |
++-----------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+|   https://164.92.78.95:2379 | 7fed495218a50d9f |  3.5.16 |   28 MB |     false |      false |         4 |     156852 |             156852 |        |
+| https://146.190.130.42:2379 | 8642dda860841612 |  3.5.16 |   28 MB |      true |      false |         4 |     156852 |             156852 |        |
+|   https://164.92.76.45:2379 | b214e54d840de345 |  3.5.16 |   21 MB |     false |      false |         4 |     156852 |             156852 |        |
++-----------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
+```
+
 ### Check Endpoint Health
 
 Command:
+
+RKE1
+
 ```
 docker exec -e ETCDCTL_ENDPOINTS=$(docker exec etcd etcdctl member list | cut -d, -f5 | sed -e 's/ //g' | paste -sd ',') etcd etcdctl endpoint health
 ```
@@ -133,9 +179,26 @@ https://IP:2379 is healthy: successfully committed proposal: took = 2.649963ms
 https://IP:2379 is healthy: successfully committed proposal: took = 2.451201ms
 ```
 
+RKE2
+
+```
+crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} --endpoints=$ETCDCTL_ENDPOINTS endpoint health
+
+```
+
+Example output:
+```
+https://164.92.78.95:2379 is healthy: successfully committed proposal: took = 10.043364ms
+https://146.190.130.42:2379 is healthy: successfully committed proposal: took = 10.526555ms
+https://164.92.76.45:2379 is healthy: successfully committed proposal: took = 11.930783ms)
+```
+
 ### Check Connectivity on Port TCP/2379
 
 Command:
+
+RKE1
+
 ```
 for endpoint in $(docker exec etcd etcdctl member list | cut -d, -f5); do
    echo "Validating connection to ${endpoint}/health"
@@ -153,9 +216,25 @@ Validating connection to https://IP:2379/health
 {"health": "true"}
 ```
 
+RKE2
+
+```
+for endpoint in $(/var/lib/rancher/rke2/bin/crictl exec $etcdcontainer etcdctl --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt member list |cut -d, -f5); do    echo "Validating connection to ${endpoint}/health";    curl -L --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key "${endpoint}/health";   echo ""; done
+```
+
+Example output:
+```
+Validating connection to https://164.92.78.95:2379/health
+Validating connection to https://146.190.130.42:2379/health
+Validating connection to https://164.92.76.45:2379/health
+```
+
 ### Check Connectivity on Port TCP/2380
 
 Command:
+
+RKE1
+
 ```
 for endpoint in $(docker exec etcd etcdctl member list | cut -d, -f4); do
   echo "Validating connection to ${endpoint}/version";
@@ -173,11 +252,21 @@ Validating connection to https://IP:2380/version
 {"etcdserver":"3.5.7","etcdcluster":"3.5.0"}
 ```
 
+RKE2
+
+```
+for endpoint in $(/var/lib/rancher/rke2/bin/crictl exec $etcdcontainer etcdctl --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt member list |cut -d, -f4); do    echo "Validating connection to ${endpoint}/version";    curl -L --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key "${endpoint}/version";   echo ""; done
+```
+
+
 ## etcd Alarms
 
 etcd will trigger alarms, for instance when it runs out of space.
 
 Command:
+
+RKE1
+
 ```
 docker exec etcd etcdctl alarm list
 ```
