@@ -36,7 +36,7 @@ etcdcontainer=$(/var/lib/rancher/rke2/bin/crictl ps --label io.kubernetes.contai
 ETCD_CERT=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
 ETCD_KEY=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
 ETCD_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
-ETCDCTL_ENDPOINTS=$(crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} member list | cut -d, -f5 | sed -e 's/ //g' | paste -sd ','
+ETCDCTL_ENDPOINTS=$(crictl exec ${etcdcontainer} etcdctl --cert ${ETCD_CERT} --key ${ETCD_KEY} --cacert ${ETCD_CACERT} member list | cut -d, -f5 | sed -e 's/ //g' | paste -sd ',')
 ```
 
 List etcd container:
